@@ -1,7 +1,10 @@
 const LogManager = require('../../bot/core/LogManager');
 const BotManager = require('../../bot/core/BotManager');
 const EventEmitter = require('events');
-const path = require('path');
+const CommandService = require('./bot/CommandService');
+const EventService = require('./bot/EventService');
+const ServerService = require('./bot/ServerService');
+const BotControlService = require('./bot/BotControlService');
 
 class DiscordBotService extends EventEmitter {
     constructor() {
@@ -10,10 +13,13 @@ class DiscordBotService extends EventEmitter {
         this.bot = null;
         this.initialized = false;
 
-        // Forward all log events immediately
-        this.logger.on('log', (log) => {
-            this.emit('log', log);
-        });
+        // Initialize services
+        this.commandService = null;
+        this.eventService = null;
+        this.serverService = null;
+        this.botControlService = null;
+
+        this.logger.on('log', (log) => this.emit('log', log));
     }
 
     initialize() {
@@ -21,7 +27,16 @@ class DiscordBotService extends EventEmitter {
         
         try {
             this.bot = new BotManager(this.logger);
-            this.setupEventForwarding();
+            
+            // Initialize services
+            this.commandService = new CommandService(this.bot, this.logger);
+            this.eventService = new EventService(this.bot, this.logger);
+            this.serverService = new ServerService(this.bot, this.logger);
+            this.botControlService = new BotControlService(this.bot, this.logger);
+
+            // Setup event forwarding
+            this.eventService.setupEventForwarding(this);
+            
             this.initialized = true;
         } catch (error) {
             this.logger.error('Failed to initialize Discord bot service', {
@@ -32,177 +47,73 @@ class DiscordBotService extends EventEmitter {
         }
     }
 
-    setupEventForwarding() {
-        if (!this.bot) return;
-
-        // Forward bot status updates
-        this.bot.on('statusUpdate', (status) => {
-            this.emit('statusUpdate', status);
-        });
-
-        // Forward server updates
-        this.bot.on('serversUpdate', (servers) => {
-            this.emit('serversUpdate', servers);
-        });
-
-        // Forward Discord debug events
-        this.bot.client?.on('debug', (info) => {
-            this.logger.debug(info);
-        });
-
-        // Forward Discord warnings
-        this.bot.client?.on('warn', (info) => {
-            this.logger.warn(info);
-        });
-
-        // Forward Discord errors
-        this.bot.client?.on('error', (error) => {
-            this.logger.error('Discord client error', {
-                error: error.message,
-                stack: error.stack
-            });
-        });
-    }
-
+    // Bot Control Methods
     async start(token) {
-        try {
-            if (!this.initialized) {
-                this.initialize();
-            }
-
-            this.logger.info('Starting Discord bot service...');
-            const result = await this.bot.start(token);
-            if (!result) {
-                throw new Error('Bot failed to start');
-            }
-            return true;
-        } catch (error) {
-            this.logger.error('Failed to start Discord bot service', {
-                error: error.message,
-                stack: error.stack
-            });
-            throw error;
-        }
+        if (!this.initialized) this.initialize();
+        return await this.botControlService.start(token);
     }
 
     async stop() {
-        try {
-            if (!this.bot) return true;
-
-            this.logger.info('Stopping Discord bot service...');
-            const result = await this.bot.stop();
-            if (!result) {
-                throw new Error('Bot failed to stop');
-            }
-            return true;
-        } catch (error) {
-            this.logger.error('Failed to stop Discord bot service', {
-                error: error.message,
-                stack: error.stack
-            });
-            throw error;
-        }
+        return await this.botControlService.stop();
     }
 
     async restart() {
-        try {
-            if (!this.bot) {
-                throw new Error('Bot not initialized');
-            }
-
-            this.logger.info('Restarting Discord bot service...');
-            const result = await this.bot.restart();
-            if (!result) {
-                throw new Error('Bot failed to restart');
-            }
-            return true;
-        } catch (error) {
-            this.logger.error('Failed to restart Discord bot service', {
-                error: error.message,
-                stack: error.stack
-            });
-            throw error;
-        }
+        return await this.botControlService.restart();
     }
 
     getStatus() {
-        if (!this.bot) {
-            return {
-                online: false,
-                uptime: 0,
-                commandCount: 0,
-                serverCount: 0,
-                userCount: 0
-            };
-        }
-        return this.bot.getStatus();
+        return this.botControlService.getStatus();
     }
 
+    // Server Methods
     getServers() {
-        if (!this.bot) return [];
-        return this.bot.getServers();
+        return this.serverService.getServers();
     }
 
     async getServerDetails(serverId) {
-        if (!this.bot) return null;
-        return await this.bot.getServerDetails(serverId);
+        return await this.serverService.getServerDetails(serverId);
     }
 
+    // Command Methods
     async reloadCommands() {
-        try {
-            if (!this.bot) {
-                throw new Error('Bot not initialized');
-            }
-
-            this.logger.info('Reloading bot commands...');
-            const result = await this.bot.reloadCommands();
-            if (!result) {
-                throw new Error('Failed to reload commands');
-            }
-            return true;
-        } catch (error) {
-            this.logger.error('Failed to reload commands', {
-                error: error.message,
-                stack: error.stack
-            });
-            throw error;
-        }
+        if (!this.initialized) this.initialize();
+        return await this.commandService.reloadCommands();
     }
 
-    async reloadEvents() {
-        try {
-            if (!this.bot) {
-                throw new Error('Bot not initialized');
-            }
+    async testCommand(commandName) {
+        if (!this.initialized) this.initialize();
+        return await this.commandService.testCommand(commandName);
+    }
 
-            this.logger.info('Reloading bot events...');
-            const result = await this.bot.reloadEvents();
-            if (!result) {
-                throw new Error('Failed to reload events');
-            }
-            return true;
-        } catch (error) {
-            this.logger.error('Failed to reload events', {
-                error: error.message,
-                stack: error.stack
-            });
-            throw error;
-        }
+    async importCommands(filePath, selectedCommands) {
+        if (!this.initialized) this.initialize();
+        return await this.commandService.importCommands(filePath, selectedCommands);
+    }
+
+    async exportCommands(format, selectedCommands) {
+        if (!this.initialized) this.initialize();
+        return await this.commandService.exportCommands(format, selectedCommands);
     }
 
     getCommands() {
-        if (!this.bot || !this.bot.commandManager) return [];
-        return this.bot.commandManager.getCommandList();
+        if (!this.initialized) this.initialize();
+        return this.commandService.getCommands();
     }
 
     getCommandHelp(commandName) {
-        if (!this.bot || !this.bot.commandManager) return null;
-        return this.bot.commandManager.getCommandHelp(commandName);
+        if (!this.initialized) this.initialize();
+        return this.commandService.getCommandHelp(commandName);
+    }
+
+    // Event Methods
+    async reloadEvents() {
+        if (!this.initialized) this.initialize();
+        return await this.eventService.reloadEvents();
     }
 
     getRegisteredEvents() {
-        if (!this.bot || !this.bot.eventManager) return {};
-        return this.bot.eventManager.getRegisteredEvents();
+        if (!this.initialized) this.initialize();
+        return this.eventService.getRegisteredEvents();
     }
 }
 

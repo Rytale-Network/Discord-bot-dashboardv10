@@ -1,12 +1,17 @@
 const fs = require('fs');
 const path = require('path');
-const { Collection } = require('discord.js');
+const { Collection, REST, Routes } = require('discord.js');
 
 class CommandManager {
     constructor(client, logger) {
         this.client = client;
         this.logger = logger;
         this.commands = new Collection();
+        this.rest = null;
+    }
+
+    setToken(token) {
+        this.rest = new REST({ version: '10' }).setToken(token);
     }
 
     async loadCommands() {
@@ -18,14 +23,14 @@ class CommandManager {
             commandFiles: commandFiles 
         });
 
+        const commandsToRegister = [];
+
         for (const file of commandFiles) {
             try {
                 const filePath = path.join(commandsPath, file);
-                // Clear command from cache if reloading
                 delete require.cache[require.resolve(filePath)];
                 const command = require(filePath);
 
-                // Validate command structure
                 if (!this.validateCommand(command)) {
                     this.logger.warn(`Invalid command file: ${file}`, {
                         reason: 'Missing required properties or invalid structure'
@@ -33,13 +38,15 @@ class CommandManager {
                     continue;
                 }
 
-                // Format command for Discord's API
                 const formattedCommand = this.formatCommand(command);
                 this.commands.set(command.name, formattedCommand);
+                commandsToRegister.push(this.formatCommandForRegistration(formattedCommand));
 
                 this.logger.info(`Loaded command: ${command.name}`, {
                     file: file,
-                    description: command.description
+                    description: command.description,
+                    author: command.metadata?.author || 'Unknown',
+                    version: command.metadata?.version || '1.0.0'
                 });
             } catch (error) {
                 this.logger.error(`Failed to load command file: ${file}`, {
@@ -49,31 +56,120 @@ class CommandManager {
             }
         }
 
+        if (this.client?.token) {
+            await this.registerCommandsForAllGuilds(commandsToRegister);
+        } else {
+            this.logger.warn('No token available, commands loaded but not registered with Discord');
+        }
+
         this.logger.info('Commands loaded successfully', {
             totalCommands: this.commands.size,
             commands: Array.from(this.commands.keys())
         });
     }
 
+    async registerCommandsForAllGuilds(commands) {
+        try {
+            if (!this.client?.token) {
+                throw new Error('No token available to register commands');
+            }
+
+            this.setToken(this.client.token);
+
+            const guilds = Array.from(this.client.guilds.cache.values());
+            this.logger.info('Registering commands for guilds...', {
+                guildCount: guilds.length,
+                commandCount: commands.length
+            });
+
+            for (const guild of guilds) {
+                try {
+                    const data = await this.rest.put(
+                        Routes.applicationGuildCommands(this.client.application.id, guild.id),
+                        { body: commands }
+                    );
+
+                    this.logger.info(`Registered commands for guild: ${guild.name}`, {
+                        guildId: guild.id,
+                        registeredCount: data.length,
+                        commands: data.map(cmd => cmd.name)
+                    });
+                } catch (error) {
+                    this.logger.error(`Failed to register commands for guild: ${guild.name}`, {
+                        guildId: guild.id,
+                        error: error.message
+                    });
+                }
+            }
+
+            this.logger.info('Completed command registration for all guilds');
+        } catch (error) {
+            this.logger.error('Failed to register commands', {
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
+        }
+    }
+
+    async registerCommandsForGuild(guildId, commands) {
+        try {
+            if (!this.client?.token) {
+                throw new Error('No token available to register commands');
+            }
+
+            this.setToken(this.client.token);
+
+            const guild = this.client.guilds.cache.get(guildId);
+            if (!guild) {
+                throw new Error(`Guild not found: ${guildId}`);
+            }
+
+            this.logger.info(`Registering commands for guild: ${guild.name}`, {
+                guildId: guild.id,
+                commandCount: commands.length
+            });
+
+            const data = await this.rest.put(
+                Routes.applicationGuildCommands(this.client.application.id, guild.id),
+                { body: commands }
+            );
+
+            this.logger.info(`Successfully registered commands for guild: ${guild.name}`, {
+                guildId: guild.id,
+                registeredCount: data.length,
+                commands: data.map(cmd => cmd.name)
+            });
+
+            return true;
+        } catch (error) {
+            this.logger.error(`Failed to register commands for guild: ${guildId}`, {
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
+        }
+    }
+
     validateCommand(command) {
-        // Basic validation
         if (!command.name || !command.description || !command.execute) {
             return false;
         }
 
-        // Validate name format
         if (!/^[\w-]{1,32}$/.test(command.name)) {
             this.logger.warn(`Invalid command name format: ${command.name}`);
             return false;
         }
 
-        // Validate description length
         if (command.description.length > 100) {
             this.logger.warn(`Description too long for command: ${command.name}`);
             return false;
         }
 
-        // Validate options if present
+        if (command.metadata && typeof command.metadata !== 'object') {
+            return false;
+        }
+
         if (command.options) {
             if (!Array.isArray(command.options)) {
                 return false;
@@ -90,10 +186,8 @@ class CommandManager {
     }
 
     formatCommand(command) {
-        // Create a deep copy of the command
         const formatted = { ...command };
 
-        // Format options if present
         if (formatted.options) {
             formatted.options = formatted.options.map(option => ({
                 name: option.name.toLowerCase(),
@@ -105,17 +199,17 @@ class CommandManager {
             }));
         }
 
-        // Add default permission if not present
-        if (!formatted.default_member_permissions) {
-            formatted.default_member_permissions = null;
-        }
-
-        // Add dm_permission if not present
-        if (formatted.dm_permission === undefined) {
-            formatted.dm_permission = false;
-        }
-
         return formatted;
+    }
+
+    formatCommandForRegistration(command) {
+        return {
+            name: command.name,
+            description: command.description,
+            options: command.options || [],
+            default_member_permissions: command.permissions || undefined,
+            dm_permission: false
+        };
     }
 
     formatOptions(options) {
@@ -141,16 +235,23 @@ class CommandManager {
             const commandsPath = path.join(__dirname, '..', 'commands');
             const filePath = path.join(commandsPath, `${commandName}.js`);
 
-            // Delete command from cache and collection
             delete require.cache[require.resolve(filePath)];
             this.commands.delete(commandName);
 
-            // Load and validate the command
             const command = require(filePath);
             if (this.validateCommand(command)) {
                 const formattedCommand = this.formatCommand(command);
                 this.commands.set(command.name, formattedCommand);
-                this.logger.info(`Reloaded command: ${command.name}`);
+                
+                if (this.client?.token) {
+                    const commandData = [this.formatCommandForRegistration(formattedCommand)];
+                    await this.registerCommandsForAllGuilds(commandData);
+                }
+                
+                this.logger.info(`Reloaded command: ${command.name}`, {
+                    author: command.metadata?.author || 'Unknown',
+                    version: command.metadata?.version || '1.0.0'
+                });
                 return true;
             } else {
                 this.logger.warn(`Failed to reload command: ${commandName}`, {
@@ -169,10 +270,7 @@ class CommandManager {
 
     async reloadAllCommands() {
         try {
-            // Clear command collection
             this.commands.clear();
-
-            // Reload all commands
             await this.loadCommands();
 
             this.logger.info('Successfully reloaded all commands', {
@@ -193,7 +291,11 @@ class CommandManager {
         return Array.from(this.commands.values()).map(cmd => ({
             name: cmd.name,
             description: cmd.description,
-            options: cmd.options || []
+            options: cmd.options || [],
+            metadata: cmd.metadata || {
+                author: 'Unknown',
+                version: '1.0.0'
+            }
         }));
     }
 
@@ -205,7 +307,11 @@ class CommandManager {
             name: command.name,
             description: command.description,
             options: command.options || [],
-            usage: command.usage || 'No usage information provided'
+            usage: command.usage || 'No usage information provided',
+            metadata: command.metadata || {
+                author: 'Unknown',
+                version: '1.0.0'
+            }
         };
     }
 }

@@ -1,276 +1,108 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
-const path = require('path');
+const { app } = require('electron');
 const Store = require('electron-store');
+const path = require('path');
 const discordBot = require('./services/discord-bot');
 require('dotenv').config();
 
-const store = new Store();
-let mainWindow = null;
+const WindowHandler = require('./handlers/WindowHandler');
+const CommandHandler = require('./handlers/CommandHandler');
+const BotHandler = require('./handlers/BotHandler');
+const ServerHandler = require('./handlers/ServerHandler');
+const SettingsHandler = require('./handlers/SettingsHandler');
+const LogHandler = require('./handlers/LogHandler');
 
-// Initialize bot service immediately
-discordBot.initialize();
-
-// Set up log directory
-const logPath = path.join(app.getPath('userData'), 'logs');
-discordBot.logger.setLogPath(logPath);
-
-function createWindow() {
-    mainWindow = new BrowserWindow({
-        width: 1200,
-        height: 800,
-        webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js')
-        }
-    });
-
-    mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-
-    if (process.argv.includes('--dev')) {
-        mainWindow.webContents.openDevTools();
+class Application {
+    constructor() {
+        this.store = new Store();
+        this.logPath = path.join(app.getPath('userData'), 'logs');
+        this.windowHandler = new WindowHandler(discordBot);
+        this.botHandler = null;
+        
+        // Initialize bot service
+        discordBot.initialize();
+        discordBot.logger.setLogPath(this.logPath);
     }
-}
 
-// Initialize bot with stored token
-async function initializeBot() {
-    try {
-        const token = store.get('botToken') || process.env.DISCORD_BOT_TOKEN;
-        if (token) {
-            discordBot.logger.info('Bot token configured, ready to start');
-            // Optionally auto-start the bot
-            if (store.get('autoStart', false)) {
-                await discordBot.start(token);
-            }
-        }
-    } catch (error) {
-        discordBot.logger.error('Failed to initialize bot', { error: error.message });
-    }
-}
-
-// Set up event forwarding
-function setupEventForwarding() {
-    discordBot.on('statusUpdate', (status) => {
-        if (mainWindow?.webContents) {
-            mainWindow.webContents.send('bot-status-update', status);
-        }
-    });
-
-    discordBot.on('serversUpdate', (servers) => {
-        if (mainWindow?.webContents) {
-            mainWindow.webContents.send('servers-update', servers);
-        }
-    });
-
-    discordBot.on('log', (log) => {
-        if (mainWindow?.webContents) {
-            mainWindow.webContents.send('log', log);
-        }
-    });
-
-    // Forward command updates
-    discordBot.on('commandsUpdate', (commands) => {
-        if (mainWindow?.webContents) {
-            mainWindow.webContents.send('commands-update', commands);
-        }
-    });
-}
-
-app.whenReady().then(async () => {
-    createWindow();
-    setupEventForwarding();
-    await initializeBot();
-
-    app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
-            createWindow();
-        }
-    });
-});
-
-app.on('window-all-closed', async () => {
-    try {
-        await discordBot.stop();
-    } catch (error) {
-        discordBot.logger.error('Error stopping bot during shutdown');
-    }
-    
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
-});
-
-// Command management
-ipcMain.handle('get-commands', async () => {
-    return discordBot.getCommands();
-});
-
-ipcMain.handle('get-command-help', async (event, commandName) => {
-    return discordBot.getCommandHelp(commandName);
-});
-
-ipcMain.handle('reload-commands', async () => {
-    try {
-        const result = await discordBot.reloadCommands();
-        if (!result) {
-            throw new Error('Failed to reload commands');
-        }
-        return true;
-    } catch (error) {
-        discordBot.logger.error('Failed to reload commands', { error: error.message });
-        throw error;
-    }
-});
-
-// Settings management
-ipcMain.handle('get-setting', async (event, key) => {
-    return store.get(key);
-});
-
-ipcMain.handle('set-setting', async (event, key, value) => {
-    store.set(key, value);
-    
-    if (key === 'botToken' && value?.trim()) {
+    async initializeBot() {
         try {
-            const status = discordBot.getStatus();
-            if (status.online) {
-                await discordBot.stop();
-                await discordBot.start(value.trim());
+            const token = this.store.get('botToken') || process.env.DISCORD_BOT_TOKEN;
+            if (token) {
+                discordBot.logger.info('Bot token configured, ready to start');
+                if (this.store.get('autoStart', false)) {
+                    await discordBot.start(token);
+                }
             }
         } catch (error) {
-            throw new Error('Failed to start bot with new token. Please verify the token is valid.');
+            discordBot.logger.error('Failed to initialize bot', { error: error.message });
         }
     }
-    
-    return true;
-});
 
-// Bot status management
-ipcMain.handle('get-bot-status', async () => {
-    return discordBot.getStatus();
-});
-
-// Server management
-ipcMain.handle('get-servers', async () => {
-    return discordBot.getServers();
-});
-
-ipcMain.handle('get-server-details', async (event, serverId) => {
-    return discordBot.getServerDetails(serverId);
-});
-
-// Bot control
-ipcMain.handle('restart-bot', async () => {
-    const token = store.get('botToken') || process.env.DISCORD_BOT_TOKEN;
-    if (!token) {
-        throw new Error('No bot token configured. Please set a token in the settings.');
+    setupHandlers() {
+        const mainWindow = this.windowHandler.getWindow();
+        
+        new CommandHandler(discordBot, mainWindow);
+        // Create BotHandler and store reference
+        this.botHandler = new BotHandler(discordBot, this.store);
+        // Set the main window for event forwarding
+        this.botHandler.setMainWindow(mainWindow);
+        new ServerHandler(discordBot);
+        new SettingsHandler(discordBot, this.store);
+        new LogHandler(discordBot, this.logPath);
     }
-    
-    try {
-        const result = await discordBot.restart();
-        if (!result) {
-            throw new Error('Bot restart failed');
-        }
-        return true;
-    } catch (error) {
-        throw new Error('Failed to restart bot. Please verify your token is valid.');
+
+    setupErrorHandling() {
+        const mainWindow = this.windowHandler.getWindow();
+
+        process.on('uncaughtException', (error) => {
+            discordBot.logger.error('Uncaught Exception', { error: error.message });
+            mainWindow?.webContents.send('error', {
+                type: 'uncaughtException',
+                message: error.message
+            });
+        });
+
+        process.on('unhandledRejection', (error) => {
+            discordBot.logger.error('Unhandled Rejection', { error: error.message });
+            mainWindow?.webContents.send('error', {
+                type: 'unhandledRejection',
+                message: error.message
+            });
+        });
     }
-});
 
-ipcMain.handle('start-bot', async () => {
-    const token = store.get('botToken') || process.env.DISCORD_BOT_TOKEN;
-    if (!token) {
-        throw new Error('No bot token configured. Please set a token in the settings.');
+    async start() {
+        await app.whenReady();
+
+        this.windowHandler.createWindow();
+        this.windowHandler.setupEventForwarding();
+        this.setupHandlers();
+        this.setupErrorHandling();
+        await this.initializeBot();
+
+        // Ensure window recreation also sets up event forwarding
+        app.on('activate', () => {
+            if (BrowserWindow.getAllWindows().length === 0) {
+                this.windowHandler.createWindow();
+                const mainWindow = this.windowHandler.getWindow();
+                if (this.botHandler) {
+                    this.botHandler.setMainWindow(mainWindow);
+                }
+            }
+        });
+
+        app.on('window-all-closed', async () => {
+            try {
+                await discordBot.stop();
+            } catch (error) {
+                discordBot.logger.error('Error stopping bot during shutdown');
+            }
+            
+            if (process.platform !== 'darwin') {
+                app.quit();
+            }
+        });
     }
-    
-    try {
-        const result = await discordBot.start(token);
-        if (!result) {
-            throw new Error('Bot start failed');
-        }
-        return true;
-    } catch (error) {
-        throw new Error('Failed to start bot. Please verify your token is valid.');
-    }
-});
+}
 
-ipcMain.handle('stop-bot', async () => {
-    try {
-        const result = await discordBot.stop();
-        if (!result) {
-            throw new Error('Bot stop failed');
-        }
-        return true;
-    } catch (error) {
-        throw new Error('Failed to stop bot. Please try again.');
-    }
-});
-
-// Log management
-ipcMain.handle('get-logs', async (event, options) => {
-    return discordBot.logger.getLogs(options);
-});
-
-ipcMain.handle('get-log-files', async () => {
-    return discordBot.logger.getLogFiles();
-});
-
-ipcMain.handle('get-log-path', async () => {
-    return logPath;
-});
-
-ipcMain.handle('get-user-data-path', async () => {
-    return app.getPath('userData');
-});
-
-ipcMain.handle('open-log-directory', async () => {
-    try {
-        await shell.openPath(logPath);
-        return true;
-    } catch (error) {
-        discordBot.logger.error('Failed to open log directory', { error: error.message });
-        throw new Error('Failed to open log directory');
-    }
-});
-
-ipcMain.handle('export-logs', async (event, filename, options = {}) => {
-    try {
-        const exportPath = path.join(app.getPath('downloads'), filename);
-        await discordBot.logger.saveLogsToFile(exportPath, options);
-        await shell.openPath(path.dirname(exportPath));
-        return true;
-    } catch (error) {
-        discordBot.logger.error('Failed to export logs', { error: error.message });
-        throw new Error('Failed to export logs');
-    }
-});
-
-ipcMain.handle('save-logs', async () => {
-    try {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const filename = `bot-logs-${timestamp}.log`;
-        const savePath = path.join(logPath, filename);
-        await discordBot.logger.saveLogsToFile(savePath);
-        return true;
-    } catch (error) {
-        discordBot.logger.error('Failed to save logs', { error: error.message });
-        throw new Error('Failed to save logs');
-    }
-});
-
-// Error handling
-process.on('uncaughtException', (error) => {
-    discordBot.logger.error('Uncaught Exception', { error: error.message });
-    mainWindow?.webContents.send('error', {
-        type: 'uncaughtException',
-        message: error.message
-    });
-});
-
-process.on('unhandledRejection', (error) => {
-    discordBot.logger.error('Unhandled Rejection', { error: error.message });
-    mainWindow?.webContents.send('error', {
-        type: 'unhandledRejection',
-        message: error.message
-    });
-});
+const application = new Application();
+application.start();

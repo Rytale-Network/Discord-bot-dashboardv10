@@ -1,19 +1,23 @@
 import StatusManager from './modules/status.js';
 import ServerManager from './modules/servers.js';
 import SettingsManager from './modules/settings.js';
-import NavigationManager from './modules/navigation.js';
+import navigationManager from './modules/navigation.js';
 import ConsoleManager from './modules/console.js';
+import CommandManager from './modules/commands.js';
 
 class App {
     constructor() {
         // Initialize console first to capture all logs
         this.console = new ConsoleManager();
         
+        // Initialize navigation before other managers
+        this.navigation = navigationManager;
+        
         // Initialize other managers
         this.status = new StatusManager();
         this.servers = new ServerManager();
         this.settings = new SettingsManager();
-        this.navigation = new NavigationManager();
+        this.commands = new CommandManager();
         
         this.setupErrorHandling();
         this.initialize();
@@ -113,6 +117,7 @@ class App {
             await this.settings.loadSettings();
             await this.status.updateStatus();
             await this.servers.updateServers();
+            await this.commands.loadCommands();
             
             // Set up periodic updates
             setInterval(() => this.status.updateStatus(), 30000); // Update status every 30 seconds
@@ -120,6 +125,15 @@ class App {
             
             // Set up quick action buttons
             this.setupQuickActions();
+            
+            // Trigger initial navigation to ensure proper page setup
+            const currentPage = document.querySelector('.page.active');
+            if (currentPage) {
+                this.navigation.handleNavigation({
+                    preventDefault: () => {},
+                    target: document.querySelector(`nav a[href="#${currentPage.id}"]`)
+                });
+            }
             
             console.info('Application initialized successfully');
         } catch (error) {
@@ -132,6 +146,12 @@ class App {
         const restartBtn = document.getElementById('restart-bot');
         if (restartBtn) {
             restartBtn.addEventListener('click', () => this.status.restartBot());
+        }
+
+        // Reload commands button
+        const reloadCommandsBtn = document.getElementById('reload-commands');
+        if (reloadCommandsBtn) {
+            reloadCommandsBtn.addEventListener('click', () => this.commands.loadCommands());
         }
     }
 }

@@ -37,6 +37,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getCommands: () => ipcRenderer.invoke('get-commands'),
     getCommandHelp: (commandName) => ipcRenderer.invoke('get-command-help', commandName),
     reloadCommands: () => ipcRenderer.invoke('reload-commands'),
+    testCommand: (commandName) => ipcRenderer.invoke('test-command', commandName),
+    importCommands: (filePath, selectedCommands) => ipcRenderer.invoke('import-commands', filePath, selectedCommands),
+    exportCommands: (format, selectedCommands) => ipcRenderer.invoke('export-commands', format, selectedCommands),
     
     // Settings management
     getSetting: (key) => ipcRenderer.invoke('get-setting', key),

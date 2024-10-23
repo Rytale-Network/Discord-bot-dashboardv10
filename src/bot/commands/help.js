@@ -1,6 +1,20 @@
 module.exports = {
     name: 'help',
     description: 'List all commands or get info about a specific command',
+    metadata: {
+        author: 'Rytale',
+        version: '1.0.0',
+        category: 'Information',
+        description: 'Get detailed information about available commands and their usage',
+        permissions: [],
+        cooldown: 3,
+        examples: [
+            '/help',
+            '/help mod',
+            '/help server',
+            '/help user'
+        ]
+    },
     options: [
         {
             name: 'command',
@@ -21,15 +35,9 @@ module.exports = {
                 // List all commands
                 const commandList = Array.from(commands.values()).map(cmd => ({
                     name: cmd.name,
-                    description: cmd.description || 'No description provided'
+                    description: cmd.description || 'No description provided',
+                    category: cmd.metadata?.category || 'Other'
                 }));
-
-                // Group commands by category
-                const categories = {
-                    'Moderation': ['mod', 'ban', 'kick', 'timeout'],
-                    'Information': ['help', 'server', 'user', 'ping'],
-                    'Utility': ['clear']
-                };
 
                 const embed = {
                     color: 0x7289DA,
@@ -42,32 +50,20 @@ module.exports = {
                     timestamp: new Date()
                 };
 
-                // Add fields for each category
-                for (const [category, categoryCommands] of Object.entries(categories)) {
-                    const commandsInCategory = commandList
-                        .filter(cmd => categoryCommands.includes(cmd.name))
-                        .map(cmd => `\`${cmd.name}\` - ${cmd.description}`)
-                        .join('\n');
-
-                    if (commandsInCategory) {
-                        embed.fields.push({
-                            name: `${category}`,
-                            value: commandsInCategory
-                        });
+                // Group commands by category
+                const categories = {};
+                commandList.forEach(cmd => {
+                    if (!categories[cmd.category]) {
+                        categories[cmd.category] = [];
                     }
-                }
+                    categories[cmd.category].push(cmd);
+                });
 
-                // Add uncategorized commands
-                const categorizedCommands = Object.values(categories).flat();
-                const uncategorized = commandList
-                    .filter(cmd => !categorizedCommands.includes(cmd.name))
-                    .map(cmd => `\`${cmd.name}\` - ${cmd.description}`)
-                    .join('\n');
-
-                if (uncategorized) {
+                // Add fields for each category
+                for (const [category, cmds] of Object.entries(categories)) {
                     embed.fields.push({
-                        name: 'Other',
-                        value: uncategorized
+                        name: category,
+                        value: cmds.map(cmd => `\`${cmd.name}\` - ${cmd.description}`).join('\n')
                     });
                 }
 
@@ -88,8 +84,24 @@ module.exports = {
             const embed = {
                 color: 0x7289DA,
                 title: `Command: ${command.name}`,
-                description: command.description || 'No description provided',
-                fields: [],
+                description: command.metadata?.description || command.description || 'No description provided',
+                fields: [
+                    {
+                        name: 'Category',
+                        value: command.metadata?.category || 'Other',
+                        inline: true
+                    },
+                    {
+                        name: 'Version',
+                        value: command.metadata?.version || '1.0.0',
+                        inline: true
+                    },
+                    {
+                        name: 'Author',
+                        value: command.metadata?.author || 'Unknown',
+                        inline: true
+                    }
+                ],
                 timestamp: new Date()
             };
 
@@ -125,26 +137,26 @@ module.exports = {
             }
 
             // Add examples if they exist
-            if (command.examples) {
+            if (command.metadata?.examples?.length > 0) {
                 embed.fields.push({
                     name: 'Examples',
-                    value: command.examples.join('\n')
+                    value: command.metadata.examples.join('\n')
                 });
             }
 
             // Add permissions if they exist
-            if (command.permissions) {
+            if (command.metadata?.permissions?.length > 0) {
                 embed.fields.push({
                     name: 'Required Permissions',
-                    value: command.permissions.join(', ')
+                    value: command.metadata.permissions.join(', ')
                 });
             }
 
             // Add cooldown if it exists
-            if (command.cooldown) {
+            if (command.metadata?.cooldown) {
                 embed.fields.push({
                     name: 'Cooldown',
-                    value: `${command.cooldown} seconds`
+                    value: `${command.metadata.cooldown} seconds`
                 });
             }
 

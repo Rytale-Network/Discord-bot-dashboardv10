@@ -17,6 +17,8 @@ class EventManager {
         for (const file of eventFiles) {
             try {
                 const filePath = path.join(eventsPath, file);
+                // Clear cache to ensure fresh load
+                delete require.cache[require.resolve(filePath)];
                 const eventModule = require(filePath);
 
                 if ('name' in eventModule && 'events' in eventModule) {
@@ -57,9 +59,13 @@ class EventManager {
                             setTimeout(() => {
                                 this.handledInteractions.delete(interaction.id);
                             }, 5 * 60 * 1000);
-                        }
 
-                        await handler(...args, this.logger, this.commandManager.commands);
+                            // Get fresh commands collection
+                            const commands = this.commandManager.getAllCommands();
+                            await handler(...args, this.logger, commands);
+                        } else {
+                            await handler(...args, this.logger, this.commandManager.getAllCommands());
+                        }
                     } catch (error) {
                         this.logger.error(`Error in event handler: ${eventName}`, {
                             module: moduleName,
@@ -85,7 +91,8 @@ class EventManager {
         this.client.once('ready', () => {
             this.logger.info('Bot is ready!', {
                 username: this.client.user.tag,
-                guilds: this.client.guilds.cache.size
+                guilds: this.client.guilds.cache.size,
+                commands: this.commandManager.getAllCommands().size
             });
         });
 

@@ -5,13 +5,20 @@ module.exports = {
             try {
                 // Handle slash commands
                 if (interaction.isChatInputCommand()) {
+                    logger.debug('Command interaction received', {
+                        commandName: interaction.commandName,
+                        user: interaction.user.tag,
+                        guild: interaction.guild?.name || 'DM'
+                    });
+
                     const command = commands.get(interaction.commandName);
                     
                     if (!command) {
                         logger.warn('Unknown Command Attempted', {
                             command: interaction.commandName,
                             user: interaction.user.tag,
-                            guild: interaction.guild?.name || 'DM'
+                            guild: interaction.guild?.name || 'DM',
+                            availableCommands: Array.from(commands.keys())
                         });
                         
                         if (!interaction.replied && !interaction.deferred) {
@@ -24,10 +31,11 @@ module.exports = {
                     }
 
                     try {
-                        logger.info('Command Executed', {
+                        logger.info('Executing command', {
                             command: interaction.commandName,
                             user: interaction.user.tag,
-                            guild: interaction.guild?.name || 'DM'
+                            guild: interaction.guild?.name || 'DM',
+                            options: interaction.options?.data || []
                         });
 
                         await command.execute(interaction);
@@ -143,7 +151,9 @@ module.exports = {
             } catch (error) {
                 logger.error('Error handling interaction', {
                     error: error.message,
-                    stack: error.stack
+                    stack: error.stack,
+                    type: interaction.type,
+                    commandName: interaction.commandName
                 });
 
                 try {

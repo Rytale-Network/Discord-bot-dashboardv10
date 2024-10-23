@@ -1,6 +1,20 @@
 module.exports = {
     name: 'mod',
     description: 'Moderation commands',
+    metadata: {
+        author: 'Rytale',
+        version: '1.0.0',
+        category: 'Moderation',
+        description: 'Advanced moderation tools for server management',
+        permissions: ['MODERATE_MEMBERS', 'KICK_MEMBERS', 'BAN_MEMBERS', 'MANAGE_MESSAGES'],
+        cooldown: 5, // seconds
+        examples: [
+            '/mod kick @user spamming',
+            '/mod ban @user 7 repeated violations',
+            '/mod timeout @user 60 inappropriate behavior',
+            '/mod clear 50'
+        ]
+    },
     options: [
         {
             name: 'kick',

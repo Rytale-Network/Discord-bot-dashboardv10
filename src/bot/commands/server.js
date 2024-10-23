@@ -1,6 +1,17 @@
 module.exports = {
     name: 'server',
     description: 'Get server information',
+    metadata: {
+        author: 'Rytale',
+        version: '1.0.0',
+        category: 'Information',
+        description: 'Display detailed information about the current Discord server',
+        permissions: [],
+        cooldown: 5,
+        examples: [
+            '/server'
+        ]
+    },
     async execute(interaction) {
         try {
             // Defer the reply first
@@ -20,6 +31,11 @@ module.exports = {
             const boostLevel = guild.premiumTier;
             const boostCount = guild.premiumSubscriptionCount;
 
+            // Get channel type counts
+            const textChannels = guild.channels.cache.filter(c => c.type === 0).size;
+            const voiceChannels = guild.channels.cache.filter(c => c.type === 2).size;
+            const categoryChannels = guild.channels.cache.filter(c => c.type === 4).size;
+
             const embed = {
                 color: 0x7289DA,
                 title: guild.name,
@@ -33,13 +49,18 @@ module.exports = {
                         inline: true
                     },
                     {
-                        name: 'Members',
-                        value: memberCount.toString(),
+                        name: 'Created At',
+                        value: createdAt,
                         inline: true
                     },
                     {
-                        name: 'Channels',
-                        value: channelCount.toString(),
+                        name: 'Server ID',
+                        value: guild.id,
+                        inline: true
+                    },
+                    {
+                        name: 'Members',
+                        value: memberCount.toString(),
                         inline: true
                     },
                     {
@@ -48,21 +69,49 @@ module.exports = {
                         inline: true
                     },
                     {
-                        name: 'Created At',
-                        value: createdAt,
+                        name: 'Boost Status',
+                        value: `Level ${boostLevel} (${boostCount} boosts)`,
                         inline: true
                     },
                     {
-                        name: 'Boost Level',
-                        value: `Level ${boostLevel} (${boostCount} boosts)`,
-                        inline: true
+                        name: 'Channels',
+                        value: [
+                            `📝 Text: ${textChannels}`,
+                            `🔊 Voice: ${voiceChannels}`,
+                            `📁 Categories: ${categoryChannels}`,
+                            `📊 Total: ${channelCount}`
+                        ].join('\n'),
+                        inline: false
                     }
                 ],
                 footer: {
-                    text: `Server ID: ${guild.id}`
+                    text: `Requested by ${interaction.user.tag}`
                 },
                 timestamp: new Date()
             };
+
+            // Add verification level
+            const verificationLevels = {
+                0: 'None',
+                1: 'Low',
+                2: 'Medium',
+                3: 'High',
+                4: 'Highest'
+            };
+            embed.fields.push({
+                name: 'Verification Level',
+                value: verificationLevels[guild.verificationLevel] || 'Unknown',
+                inline: true
+            });
+
+            // Add features if any
+            if (guild.features.length > 0) {
+                embed.fields.push({
+                    name: 'Features',
+                    value: guild.features.map(f => `• ${f.toLowerCase().replace(/_/g, ' ')}`).join('\n'),
+                    inline: false
+                });
+            }
 
             await interaction.editReply({ embeds: [embed] });
         } catch (error) {

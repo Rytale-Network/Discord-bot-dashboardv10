@@ -3,6 +3,7 @@ class NavigationManager {
     constructor() {
         this.navLinks = document.querySelectorAll('nav a');
         this.pages = document.querySelectorAll('.page');
+        this.activePageListeners = new Set();
         
         this.setupEventListeners();
     }
@@ -11,6 +12,10 @@ class NavigationManager {
         this.navLinks.forEach(link => {
             link.addEventListener('click', (e) => this.handleNavigation(e));
         });
+    }
+
+    onPageActive(pageId, callback) {
+        this.activePageListeners.add({ pageId, callback });
     }
 
     handleNavigation(e) {
@@ -26,9 +31,17 @@ class NavigationManager {
             page.classList.remove('active');
             if (page.id === targetId) {
                 page.classList.add('active');
+                // Notify listeners for this page
+                this.activePageListeners.forEach(listener => {
+                    if (listener.pageId === targetId) {
+                        listener.callback();
+                    }
+                });
             }
         });
     }
 }
 
-export default NavigationManager;
+// Export singleton instance
+const navigationManager = new NavigationManager();
+export default navigationManager;

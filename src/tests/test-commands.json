@@ -1,0 +1,58 @@
+{
+    "greet": {
+        "name": "greet",
+        "description": "Send a greeting message",
+        "metadata": {
+            "author": "Test Author",
+            "version": "1.0.0",
+            "category": "Social",
+            "description": "A friendly greeting command with customizable messages",
+            "permissions": ["SEND_MESSAGES"],
+            "cooldown": 5,
+            "examples": [
+                "/greet Hello @user",
+                "/greet Welcome to the server!"
+            ]
+        },
+        "options": [
+            {
+                "name": "message",
+                "type": 3,
+                "description": "Custom greeting message",
+                "required": false
+            },
+            {
+                "name": "user",
+                "type": 6,
+                "description": "User to greet",
+                "required": false
+            }
+        ],
+        "execute": "async function(interaction) { const message = interaction.options.getString('message') || 'Hello'; const user = interaction.options.getUser('user'); const target = user ? user.toString() : 'everyone'; await interaction.reply({ content: `${message}, ${target}!` }); }"
+    },
+    "poll": {
+        "name": "poll",
+        "description": "Create a quick poll",
+        "metadata": {
+            "author": "Test Author",
+            "version": "1.0.0",
+            "category": "Utility",
+            "description": "Create simple polls with reactions",
+            "permissions": ["SEND_MESSAGES", "ADD_REACTIONS"],
+            "cooldown": 30,
+            "examples": [
+                "/poll What's your favorite color?",
+                "/poll Should we have a movie night?"
+            ]
+        },
+        "options": [
+            {
+                "name": "question",
+                "type": 3,
+                "description": "The poll question",
+                "required": true
+            }
+        ],
+        "execute": "async function(interaction) { const question = interaction.options.getString('question'); const poll = await interaction.reply({ content: `📊 **Poll:** ${question}\\n\\n👍 Yes\\n👎 No`, fetchReply: true }); await poll.react('👍'); await poll.react('👎'); }"
+    }
+}
