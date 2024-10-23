@@ -11,6 +11,102 @@ class LogManager extends EventEmitter {
         this.currentStream = null;
         this.logs = [];
         this.maxLogsInMemory = 1000;
+        this.logLevel = 'info';
+        this.fileLoggingEnabled = false;
+        this.retentionDays = 7;
+        this.logLevels = {
+            error: 0,
+            warn: 1,
+            info: 2,
+            debug: 3
+        };
+    }
+
+    setLevel(level) {
+        if (this.logLevels[level] !== undefined) {
+            const oldLevel = this.logLevel;
+            this.logLevel = level;
+            this.emit('log', {
+                timestamp: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
+                level: 'info',
+                message: `Log level changed from ${oldLevel} to ${level}`
+            });
+        }
+    }
+
+    setFileLogging(enabled) {
+        const wasEnabled = this.fileLoggingEnabled;
+        this.fileLoggingEnabled = enabled;
+        
+        if (enabled && this.logPath) {
+            if (!wasEnabled) {
+                this.emit('log', {
+                    timestamp: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
+                    level: 'info',
+                    message: 'File logging enabled'
+                });
+            }
+            this.rotateLogFile();
+        } else if (!enabled && this.currentStream) {
+            if (wasEnabled) {
+                this.emit('log', {
+                    timestamp: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
+                    level: 'info',
+                    message: 'File logging disabled'
+                });
+            }
+            this.currentStream.end();
+            this.currentStream = null;
+        }
+    }
+
+    setRetentionDays(days) {
+        const oldDays = this.retentionDays;
+        this.retentionDays = days;
+        this.emit('log', {
+            timestamp: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
+            level: 'info',
+            message: `Log retention changed from ${oldDays} to ${days} days`
+        });
+        this.cleanOldLogs();
+    }
+
+    async cleanOldLogs() {
+        if (!this.logPath || !this.fileLoggingEnabled) return;
+
+        try {
+            const files = await fs.promises.readdir(this.logPath);
+            const now = new Date();
+            let deletedCount = 0;
+
+            for (const file of files) {
+                if (!file.endsWith('.log')) continue;
+
+                const filePath = path.join(this.logPath, file);
+                const stats = await fs.promises.stat(filePath);
+                const daysOld = (now - stats.mtime) / (1000 * 60 * 60 * 24);
+
+                if (daysOld > this.retentionDays) {
+                    await fs.promises.unlink(filePath);
+                    deletedCount++;
+                }
+            }
+
+            if (deletedCount > 0) {
+                this.emit('log', {
+                    timestamp: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
+                    level: 'info',
+                    message: `Cleaned up ${deletedCount} old log files`
+                });
+            }
+        } catch (error) {
+            this.emit('log', {
+                timestamp: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
+                level: 'error',
+                message: 'Failed to clean old logs',
+                meta: { error: error.message }
+            });
+        }
     }
 
     setLogPath(logPath) {
@@ -18,10 +114,15 @@ class LogManager extends EventEmitter {
         if (!fs.existsSync(logPath)) {
             fs.mkdirSync(logPath, { recursive: true });
         }
-        this.rotateLogFile();
+        if (this.fileLoggingEnabled) {
+            this.rotateLogFile();
+        }
+        this.cleanOldLogs();
     }
 
     rotateLogFile() {
+        if (!this.fileLoggingEnabled) return;
+
         if (this.currentStream) {
             this.currentStream.end();
         }
@@ -52,11 +153,12 @@ class LogManager extends EventEmitter {
         return { entry: logEntry, formatted };
     }
 
+    shouldLog(level) {
+        return this.logLevels[level] <= this.logLevels[this.logLevel];
+    }
+
     log(level, message, meta = {}) {
-        if (!this.logPath) {
-            console.log(`${level.toUpperCase()}: ${message}`);
-            return;
-        }
+        if (!this.shouldLog(level)) return;
 
         // Clean up meta object
         const cleanMeta = {};
@@ -74,8 +176,8 @@ class LogManager extends EventEmitter {
             this.logs.shift();
         }
 
-        // Write to file
-        if (this.currentStream) {
+        // Write to file if enabled
+        if (this.fileLoggingEnabled && this.currentStream) {
             this.currentStream.write(formatted + '\n');
         }
 
@@ -166,5 +268,4 @@ class LogManager extends EventEmitter {
     }
 }
 
-// Export the class itself
 module.exports = LogManager;

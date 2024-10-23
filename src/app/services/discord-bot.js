@@ -65,6 +65,11 @@ class DiscordBotService extends EventEmitter {
         return this.botControlService.getStatus();
     }
 
+    async updatePresence(presenceData) {
+        if (!this.initialized) this.initialize();
+        return await this.botControlService.updatePresence(presenceData);
+    }
+
     // Server Methods
     getServers() {
         return this.serverService.getServers();
@@ -114,6 +119,12 @@ class DiscordBotService extends EventEmitter {
     getRegisteredEvents() {
         if (!this.initialized) this.initialize();
         return this.eventService.getRegisteredEvents();
+    }
+
+    // Settings Methods
+    setAutoRestart(enabled) {
+        if (!this.initialized) this.initialize();
+        return this.bot.setAutoRestart(enabled);
     }
 }
 

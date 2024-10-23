@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     startBot: () => ipcRenderer.invoke('start-bot'),
     stopBot: () => ipcRenderer.invoke('stop-bot'),
     restartBot: () => ipcRenderer.invoke('restart-bot'),
+    updateBotPresence: (presenceData) => ipcRenderer.invoke('update-bot-presence', presenceData),
     
     // Command management
     getCommands: () => ipcRenderer.invoke('get-commands'),
@@ -44,6 +45,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Settings management
     getSetting: (key) => ipcRenderer.invoke('get-setting', key),
     setSetting: (key, value) => ipcRenderer.invoke('set-setting', key, value),
+    getAllSettings: () => ipcRenderer.invoke('get-all-settings'),
+    saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
     
     // Log management
     getLogs: (options) => ipcRenderer.invoke('get-logs', options),
@@ -59,5 +62,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onServersUpdate: (callback) => addListener('servers-update', callback),
     onError: (callback) => addListener('error', callback),
     onLog: (callback) => addListener('log', callback),
-    onCommandsUpdate: (callback) => addListener('commands-update', callback)
+    onCommandsUpdate: (callback) => addListener('commands-update', callback),
+    onSettingsUpdate: (callback) => addListener('settings-update', callback)
 });

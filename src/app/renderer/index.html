@@ -76,20 +76,88 @@
             <div id="settings" class="page">
                 <h1>Settings</h1>
                 <div class="settings-form">
-                    <div class="setting-group">
-                        <label for="bot-token">Bot Token</label>
-                        <input type="password" id="bot-token" placeholder="Enter bot token">
+                    <div class="settings-section">
+                        <h2>Bot Configuration</h2>
+                        <div class="setting-group">
+                            <label for="bot-token">Bot Token</label>
+                            <input type="password" id="bot-token" placeholder="Enter bot token">
+                            <p class="setting-description">Your Discord bot token from the Discord Developer Portal.</p>
+                        </div>
+                        <div class="setting-group">
+                            <label for="bot-status">Bot Status</label>
+                            <select id="bot-status">
+                                <option value="online">Online</option>
+                                <option value="idle">Idle</option>
+                                <option value="dnd">Do Not Disturb</option>
+                                <option value="invisible">Invisible</option>
+                            </select>
+                            <p class="setting-description">The bot's presence status shown in Discord.</p>
+                        </div>
+                        <div class="setting-group">
+                            <label for="activity-type">Activity Type</label>
+                            <select id="activity-type">
+                                <option value="PLAYING">Playing</option>
+                                <option value="WATCHING">Watching</option>
+                                <option value="LISTENING">Listening to</option>
+                                <option value="STREAMING">Streaming</option>
+                                <option value="COMPETING">Competing in</option>
+                            </select>
+                            <input type="text" id="activity-name" placeholder="Activity name">
+                            <p class="setting-description">The activity status shown under the bot's name.</p>
+                        </div>
                     </div>
-                    <div class="setting-group">
-                        <label for="command-prefix">Command Prefix</label>
-                        <input type="text" id="command-prefix" placeholder="!">
+
+                    <div class="settings-section">
+                        <h2>Behavior Settings</h2>
+                        <div class="setting-group">
+                            <label>
+                                <input type="checkbox" id="auto-start">
+                                Auto Start
+                            </label>
+                            <p class="setting-description">Automatically start the bot when the application launches.</p>
+                        </div>
+                        <div class="setting-group">
+                            <label>
+                                <input type="checkbox" id="auto-restart">
+                                Auto Restart
+                            </label>
+                            <p class="setting-description">Automatically restart the bot if it crashes or disconnects.</p>
+                        </div>
+                        <div class="setting-group">
+                            <label>
+                                <input type="checkbox" id="debug-mode">
+                                Debug Mode
+                            </label>
+                            <p class="setting-description">Enable detailed logging for troubleshooting.</p>
+                        </div>
                     </div>
-                    <div class="setting-group">
-                        <label>
-                            <input type="checkbox" id="auto-restart">
-                            Auto Restart
-                        </label>
+
+                    <div class="settings-section">
+                        <h2>Log Settings</h2>
+                        <div class="setting-group">
+                            <label for="log-level">Log Level</label>
+                            <select id="log-level">
+                                <option value="error">Error</option>
+                                <option value="warn">Warning</option>
+                                <option value="info">Info</option>
+                                <option value="debug">Debug</option>
+                            </select>
+                            <p class="setting-description">Minimum level of logs to display in the console.</p>
+                        </div>
+                        <div class="setting-group">
+                            <label>
+                                <input type="checkbox" id="log-to-file">
+                                Log to File
+                            </label>
+                            <p class="setting-description">Save logs to a file for later review.</p>
+                        </div>
+                        <div class="setting-group">
+                            <label for="log-retention">Log Retention (days)</label>
+                            <input type="number" id="log-retention" min="1" max="90" value="7">
+                            <p class="setting-description">Number of days to keep log files before deletion.</p>
+                        </div>
                     </div>
+
                     <button id="save-settings">Save Settings</button>
                 </div>
             </div>
