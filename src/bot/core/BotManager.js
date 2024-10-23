@@ -1,5 +1,7 @@
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, Partials } = require('discord.js');
 const EventEmitter = require('events');
+const CommandManager = require('./CommandManager');
+const EventManager = require('./EventManager');
 
 class BotManager extends EventEmitter {
     constructor(logger) {
@@ -7,7 +9,15 @@ class BotManager extends EventEmitter {
         this.logger = logger;
         this.client = null;
         this.startTime = null;
-        this.commands = new Collection();
+        this.commandManager = null;
+        this.eventManager = null;
+        this.rest = null;
+        
+        // Verify required environment variables
+        if (!process.env.APPLICATION_ID) {
+            this.logger.error('APPLICATION_ID is not set in environment variables');
+            throw new Error('APPLICATION_ID is required');
+        }
     }
 
     createClient() {
@@ -16,74 +26,111 @@ class BotManager extends EventEmitter {
                 GatewayIntentBits.Guilds,
                 GatewayIntentBits.GuildMessages,
                 GatewayIntentBits.GuildMembers,
-                GatewayIntentBits.MessageContent
+                GatewayIntentBits.MessageContent,
+                GatewayIntentBits.GuildBans,
+                GatewayIntentBits.GuildPresences,
+                GatewayIntentBits.GuildMessageReactions,
+                GatewayIntentBits.DirectMessages,
+                GatewayIntentBits.GuildVoiceStates,
+                GatewayIntentBits.GuildIntegrations,
+                GatewayIntentBits.GuildWebhooks,
+                GatewayIntentBits.GuildInvites,
+                GatewayIntentBits.GuildModeration
+            ],
+            partials: [
+                Partials.Message,
+                Partials.Channel,
+                Partials.Reaction,
+                Partials.User,
+                Partials.GuildMember
             ]
         });
 
-        this.setupEventListeners();
+        // Initialize managers
+        this.commandManager = new CommandManager(this.client, this.logger);
+        this.eventManager = new EventManager(this.client, this.logger, this.commandManager);
+
+        // Make commands accessible to the client
+        this.client.commands = this.commandManager.commands;
     }
 
-    setupEventListeners() {
-        if (!this.client) return;
+    async registerApplicationCommands(token) {
+        try {
+            this.logger.info('Registering application commands...');
+            
+            // Initialize REST API
+            this.rest = new REST({ version: '10' }).setToken(token);
 
-        this.client.on('ready', () => {
-            this.startTime = Date.now();
-            this.logger.info(`Bot logged in as ${this.client.user.tag}`);
-            this.emitStatus();
-            this.emitServers();
-        });
+            // Get all commands
+            const commands = Array.from(this.commandManager.commands.values()).map(cmd => ({
+                name: cmd.name,
+                description: cmd.description,
+                options: cmd.options || [],
+                default_member_permissions: cmd.permissions || undefined,
+                dm_permission: false
+            }));
 
-        this.client.on('disconnect', () => {
-            this.logger.warn('Bot disconnected');
-            this.emitStatus();
-        });
+            this.logger.info(`Preparing to register ${commands.length} commands...`, {
+                commands: commands.map(c => c.name)
+            });
 
-        this.client.on('error', (error) => {
-            this.logger.error('Discord client error', { error: error.message });
-            this.emitStatus();
-        });
+            // Register commands globally using APPLICATION_ID
+            const result = await this.rest.put(
+                Routes.applicationCommands(process.env.APPLICATION_ID),
+                { body: commands }
+            );
 
-        this.client.on('guildCreate', (guild) => {
-            this.logger.info(`Bot joined server: ${guild.name}`);
-            this.emitServers();
-        });
+            this.logger.info(`Successfully registered ${result.length} application commands`, {
+                registeredCommands: result.map(cmd => cmd.name)
+            });
 
-        this.client.on('guildDelete', (guild) => {
-            this.logger.info(`Bot left server: ${guild.name}`);
-            this.emitServers();
-        });
+            // Store the registered commands
+            this.registeredCommands = result;
 
-        this.client.on('guildMemberAdd', (member) => {
-            this.logger.debug(`Member joined: ${member.user.tag} in ${member.guild.name}`);
-            this.emitServers();
-        });
-
-        this.client.on('guildMemberRemove', (member) => {
-            this.logger.debug(`Member left: ${member.user.tag} from ${member.guild.name}`);
-            this.emitServers();
-        });
-    }
-
-    emitStatus() {
-        const status = this.getStatus();
-        this.emit('statusUpdate', status);
-    }
-
-    emitServers() {
-        const servers = this.getServers();
-        this.emit('serversUpdate', servers);
+            return true;
+        } catch (error) {
+            this.logger.error('Failed to register application commands', {
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
+        }
     }
 
     async start(token) {
         try {
+            this.logger.info('Starting bot...');
             await this.cleanup();
             this.createClient();
             
+            // Load commands and events
+            await this.commandManager.loadCommands();
+            await this.eventManager.loadEvents();
+            this.eventManager.registerEvents();
+
+            // Login to Discord
             await this.client.login(token);
-            this.logger.info('Bot started successfully');
+            this.startTime = Date.now();
+
+            // Register commands after login
+            await this.registerApplicationCommands(token);
+            
+            this.logger.info('Bot started successfully', {
+                username: this.client.user.tag,
+                id: this.client.user.id
+            });
+
+            // Set up periodic status updates
+            setInterval(() => {
+                this.emitStatus();
+            }, 30000);
+
             return true;
         } catch (error) {
-            this.logger.error('Failed to start bot', { error: error.message });
+            this.logger.error('Failed to start bot', { 
+                error: error.message,
+                stack: error.stack
+            });
             await this.cleanup();
             throw error;
         }
@@ -91,11 +138,15 @@ class BotManager extends EventEmitter {
 
     async stop() {
         try {
+            this.logger.info('Stopping bot...');
             await this.cleanup();
             this.logger.info('Bot stopped successfully');
             return true;
         } catch (error) {
-            this.logger.error('Failed to stop bot', { error: error.message });
+            this.logger.error('Failed to stop bot', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
     }
@@ -108,12 +159,21 @@ class BotManager extends EventEmitter {
                     await this.client.destroy();
                 }
                 this.client = null;
+                this.commandManager = null;
+                this.eventManager = null;
+                this.rest = null;
             }
             this.startTime = null;
             this.emitStatus();
         } catch (error) {
-            this.logger.error('Error during cleanup', { error: error.message });
+            this.logger.error('Error during cleanup', {
+                error: error.message,
+                stack: error.stack
+            });
             this.client = null;
+            this.commandManager = null;
+            this.eventManager = null;
+            this.rest = null;
             this.startTime = null;
             this.emitStatus();
         }
@@ -121,6 +181,7 @@ class BotManager extends EventEmitter {
 
     async restart() {
         try {
+            this.logger.info('Restarting bot...');
             const token = this.client?.token;
             if (!token) {
                 throw new Error('No token available for restart');
@@ -130,15 +191,27 @@ class BotManager extends EventEmitter {
             await new Promise(resolve => setTimeout(resolve, 2000));
             return await this.start(token);
         } catch (error) {
-            this.logger.error('Failed to restart bot', { error: error.message });
+            this.logger.error('Failed to restart bot', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
     }
 
     getStatus() {
-        const online = this.client?.isReady() || false;
-        const uptime = this.startTime ? Math.floor((Date.now() - this.startTime) / 1000) : 0;
-        return { online, uptime };
+        return {
+            online: this.client?.isReady() || false,
+            uptime: this.startTime ? Math.floor((Date.now() - this.startTime) / 1000) : 0,
+            commandCount: this.commandManager?.commands.size || 0,
+            serverCount: this.client?.guilds.cache.size || 0,
+            userCount: this.client?.users.cache.size || 0
+        };
+    }
+
+    emitStatus() {
+        const status = this.getStatus();
+        this.emit('statusUpdate', status);
     }
 
     getServers() {
@@ -180,9 +253,31 @@ class BotManager extends EventEmitter {
                 }))
             };
         } catch (error) {
-            this.logger.error(`Failed to fetch server details for ${serverId}`, { error: error.message });
+            this.logger.error('Failed to fetch server details', {
+                error: error.message,
+                serverId
+            });
             throw error;
         }
+    }
+
+    getCommands() {
+        if (!this.commandManager) return [];
+        return this.commandManager.getCommandList();
+    }
+
+    async reloadCommands() {
+        if (!this.commandManager) return false;
+        const result = await this.commandManager.reloadAllCommands();
+        if (result && this.client?.token) {
+            await this.registerApplicationCommands(this.client.token);
+        }
+        return result;
+    }
+
+    async reloadEvents() {
+        if (!this.eventManager) return false;
+        return await this.eventManager.reloadEvents();
     }
 }
 

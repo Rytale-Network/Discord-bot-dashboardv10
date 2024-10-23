@@ -11,14 +11,15 @@
     "dev": "electron . --dev",
     "bot": "node src/bot/index.js",
     "test": "jest",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "deploy-commands": "node src/bot/deploy-commands.js"
   },
   "author": "",
   "license": "MIT",
   "dependencies": {
     "commander": "^11.0.0",
     "date-fns": "^2.30.0",
-    "discord.js": "^14.11.0",
+    "discord.js": "^14.13.0",
     "dotenv": "^16.3.1",
     "electron-store": "^8.1.0"
   },

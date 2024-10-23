@@ -1,217 +1,211 @@
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const LogManager = require('../../bot/core/LogManager');
+const BotManager = require('../../bot/core/BotManager');
 const EventEmitter = require('events');
+const path = require('path');
 
-class DiscordBot extends EventEmitter {
+class DiscordBotService extends EventEmitter {
     constructor() {
         super();
-        this.client = null;
-        this.startTime = null;
-        this.commands = new Collection();
+        this.logger = new LogManager();
+        this.bot = null;
+        this.initialized = false;
+
+        // Forward all log events immediately
+        this.logger.on('log', (log) => {
+            this.emit('log', log);
+        });
     }
 
-    createClient() {
-        this.client = new Client({
-            intents: [
-                GatewayIntentBits.Guilds,
-                GatewayIntentBits.GuildMessages,
-                GatewayIntentBits.GuildMembers,
-                GatewayIntentBits.MessageContent
-            ]
-        });
-
-        this.setupEventListeners();
-    }
-
-    setupEventListeners() {
-        if (!this.client) return;
-
-        this.client.on('ready', () => {
-            console.log(`Logged in as ${this.client.user.tag}`);
-            this.startTime = Date.now();
-            this.emitStatus();
-            this.emitServers();
-        });
-
-        this.client.on('guildCreate', () => {
-            this.emitServers();
-        });
-
-        this.client.on('guildDelete', () => {
-            this.emitServers();
-        });
-
-        this.client.on('guildMemberAdd', () => {
-            this.emitServers();
-        });
-
-        this.client.on('guildMemberRemove', () => {
-            this.emitServers();
-        });
-
-        this.client.on('disconnect', () => {
-            console.log('Bot disconnected');
-            this.emitStatus();
-        });
-
-        this.client.on('error', (error) => {
-            console.error('Discord client error:', error);
-            this.emitStatus();
-        });
-
-        // Emit status updates periodically
-        if (!this.statusInterval) {
-            this.statusInterval = setInterval(() => this.emitStatus(), 5000);
+    initialize() {
+        if (this.initialized) return;
+        
+        try {
+            this.bot = new BotManager(this.logger);
+            this.setupEventForwarding();
+            this.initialized = true;
+        } catch (error) {
+            this.logger.error('Failed to initialize Discord bot service', {
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
         }
     }
 
-    emitStatus() {
-        const status = this.getStatus();
-        this.emit('statusUpdate', status);
-    }
+    setupEventForwarding() {
+        if (!this.bot) return;
 
-    emitServers() {
-        const servers = this.getServers();
-        this.emit('serversUpdate', servers);
+        // Forward bot status updates
+        this.bot.on('statusUpdate', (status) => {
+            this.emit('statusUpdate', status);
+        });
+
+        // Forward server updates
+        this.bot.on('serversUpdate', (servers) => {
+            this.emit('serversUpdate', servers);
+        });
+
+        // Forward Discord debug events
+        this.bot.client?.on('debug', (info) => {
+            this.logger.debug(info);
+        });
+
+        // Forward Discord warnings
+        this.bot.client?.on('warn', (info) => {
+            this.logger.warn(info);
+        });
+
+        // Forward Discord errors
+        this.bot.client?.on('error', (error) => {
+            this.logger.error('Discord client error', {
+                error: error.message,
+                stack: error.stack
+            });
+        });
     }
 
     async start(token) {
         try {
-            // Clean up any existing client
-            await this.cleanup();
+            if (!this.initialized) {
+                this.initialize();
+            }
 
-            // Create new client
-            this.createClient();
-            
-            // Attempt to login
-            await this.client.login(token);
-            console.log('Bot started successfully');
+            this.logger.info('Starting Discord bot service...');
+            const result = await this.bot.start(token);
+            if (!result) {
+                throw new Error('Bot failed to start');
+            }
             return true;
         } catch (error) {
-            console.error('Failed to start bot:', error);
-            await this.cleanup();
+            this.logger.error('Failed to start Discord bot service', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
     }
 
     async stop() {
         try {
-            await this.cleanup();
-            console.log('Bot stopped successfully');
+            if (!this.bot) return true;
+
+            this.logger.info('Stopping Discord bot service...');
+            const result = await this.bot.stop();
+            if (!result) {
+                throw new Error('Bot failed to stop');
+            }
             return true;
         } catch (error) {
-            console.error('Failed to stop bot:', error);
+            this.logger.error('Failed to stop Discord bot service', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
-        }
-    }
-
-    async cleanup() {
-        try {
-            if (this.statusInterval) {
-                clearInterval(this.statusInterval);
-                this.statusInterval = null;
-            }
-
-            if (this.client) {
-                // Remove all listeners to prevent memory leaks
-                this.client.removeAllListeners();
-                
-                // Destroy the client if it exists and is logged in
-                if (this.client.isReady()) {
-                    await this.client.destroy();
-                }
-                
-                this.client = null;
-            }
-
-            this.startTime = null;
-            this.emitStatus();
-        } catch (error) {
-            console.error('Error during cleanup:', error);
-            // Continue cleanup even if there's an error
-            this.client = null;
-            this.startTime = null;
-            this.emitStatus();
         }
     }
 
     async restart() {
         try {
-            console.log('Starting bot restart...');
-            const token = this.client?.token;
-            if (!token) {
-                throw new Error('No token available for restart');
+            if (!this.bot) {
+                throw new Error('Bot not initialized');
             }
 
-            console.log('Stopping bot...');
-            await this.stop();
-
-            // Wait a moment before reconnecting
-            console.log('Waiting before reconnect...');
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
-            console.log('Starting bot...');
-            const result = await this.start(token);
-            
+            this.logger.info('Restarting Discord bot service...');
+            const result = await this.bot.restart();
             if (!result) {
-                throw new Error('Failed to restart bot');
+                throw new Error('Bot failed to restart');
             }
-
             return true;
         } catch (error) {
-            console.error('Failed to restart bot:', error);
+            this.logger.error('Failed to restart Discord bot service', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
     }
 
     getStatus() {
-        const online = this.client?.isReady() || false;
-        const uptime = this.startTime ? Math.floor((Date.now() - this.startTime) / 1000) : 0;
-        return { online, uptime };
+        if (!this.bot) {
+            return {
+                online: false,
+                uptime: 0,
+                commandCount: 0,
+                serverCount: 0,
+                userCount: 0
+            };
+        }
+        return this.bot.getStatus();
     }
 
     getServers() {
-        if (!this.client?.isReady()) return [];
-        
-        return this.client.guilds.cache.map(guild => ({
-            id: guild.id,
-            name: guild.name,
-            iconURL: guild.iconURL(),
-            memberCount: guild.memberCount
-        }));
+        if (!this.bot) return [];
+        return this.bot.getServers();
     }
 
     async getServerDetails(serverId) {
-        if (!this.client?.isReady()) return null;
+        if (!this.bot) return null;
+        return await this.bot.getServerDetails(serverId);
+    }
 
+    async reloadCommands() {
         try {
-            const guild = await this.client.guilds.fetch(serverId);
-            if (!guild) return null;
+            if (!this.bot) {
+                throw new Error('Bot not initialized');
+            }
 
-            const members = await guild.members.fetch();
-            const channels = guild.channels.cache;
-
-            return {
-                id: guild.id,
-                name: guild.name,
-                iconURL: guild.iconURL(),
-                memberCount: guild.memberCount,
-                channels: channels.map(channel => ({
-                    id: channel.id,
-                    name: channel.name,
-                    type: channel.type
-                })),
-                roles: guild.roles.cache.map(role => ({
-                    id: role.id,
-                    name: role.name,
-                    color: role.color,
-                    position: role.position
-                }))
-            };
+            this.logger.info('Reloading bot commands...');
+            const result = await this.bot.reloadCommands();
+            if (!result) {
+                throw new Error('Failed to reload commands');
+            }
+            return true;
         } catch (error) {
-            console.error('Failed to fetch server details:', error);
+            this.logger.error('Failed to reload commands', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
     }
+
+    async reloadEvents() {
+        try {
+            if (!this.bot) {
+                throw new Error('Bot not initialized');
+            }
+
+            this.logger.info('Reloading bot events...');
+            const result = await this.bot.reloadEvents();
+            if (!result) {
+                throw new Error('Failed to reload events');
+            }
+            return true;
+        } catch (error) {
+            this.logger.error('Failed to reload events', {
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
+        }
+    }
+
+    getCommands() {
+        if (!this.bot || !this.bot.commandManager) return [];
+        return this.bot.commandManager.getCommandList();
+    }
+
+    getCommandHelp(commandName) {
+        if (!this.bot || !this.bot.commandManager) return null;
+        return this.bot.commandManager.getCommandHelp(commandName);
+    }
+
+    getRegisteredEvents() {
+        if (!this.bot || !this.bot.eventManager) return {};
+        return this.bot.eventManager.getRegisteredEvents();
+    }
 }
 
-module.exports = new DiscordBot();
+// Export singleton instance
+const discordBot = new DiscordBotService();
+module.exports = discordBot;

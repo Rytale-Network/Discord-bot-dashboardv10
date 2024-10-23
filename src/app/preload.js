@@ -33,6 +33,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     stopBot: () => ipcRenderer.invoke('stop-bot'),
     restartBot: () => ipcRenderer.invoke('restart-bot'),
     
+    // Command management
+    getCommands: () => ipcRenderer.invoke('get-commands'),
+    getCommandHelp: (commandName) => ipcRenderer.invoke('get-command-help', commandName),
+    reloadCommands: () => ipcRenderer.invoke('reload-commands'),
+    
     // Settings management
     getSetting: (key) => ipcRenderer.invoke('get-setting', key),
     setSetting: (key, value) => ipcRenderer.invoke('set-setting', key, value),
@@ -44,10 +49,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveLogs: () => ipcRenderer.invoke('save-logs'),
     getLogPath: () => ipcRenderer.invoke('get-log-path'),
     openLogDirectory: () => ipcRenderer.invoke('open-log-directory'),
+    getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
     
     // Event listeners
     onBotStatusUpdate: (callback) => addListener('bot-status-update', callback),
     onServersUpdate: (callback) => addListener('servers-update', callback),
     onError: (callback) => addListener('error', callback),
-    onLog: (callback) => addListener('log', callback)
+    onLog: (callback) => addListener('log', callback),
+    onCommandsUpdate: (callback) => addListener('commands-update', callback)
 });

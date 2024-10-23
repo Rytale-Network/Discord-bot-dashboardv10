@@ -1,84 +1,112 @@
 #!/usr/bin/env node
+
 const { program } = require('commander');
+const { LogManager } = require('./core/LogManager');
+const BotManager = require('./core/BotManager');
 const path = require('path');
 const fs = require('fs');
-const Store = require('electron-store');
 require('dotenv').config();
 
-// Import the bot core
-const BotManager = require('./core/BotManager');
-const LogManager = require('./core/LogManager');
-
-const store = new Store();
-const logger = new LogManager();
-const botManager = new BotManager(logger);
-
-// Set up CLI
 program
     .version('1.0.0')
     .description('Discord Bot CLI Runner')
-    .option('-t, --token <token>', 'Bot token')
-    .option('-c, --config <path>', 'Path to config file')
-    .option('-l, --logs <path>', 'Path to log directory')
+    .option('-t --token <token>', 'Bot token')
+    .option('-c --config <path>', 'Path to config file')
+    .option('-l --logs <path>', 'Path to log directory')
     .parse(process.argv);
 
 const options = program.opts();
 
-async function getToken() {
-    // Priority: CLI arg > env var > stored token
-    if (options.token) {
-        return options.token;
-    }
-
-    const storedToken = store.get('botToken');
-    if (storedToken) {
-        return storedToken;
-    }
-
-    const envToken = process.env.DISCORD_BOT_TOKEN;
-    if (envToken) {
-        return envToken;
-    }
-
-    throw new Error('No bot token provided. Use --token, DISCORD_BOT_TOKEN env var, or configure through the UI');
-}
-
 async function main() {
-    try {
-        // Set up logging
-        const logPath = options.logs || path.join(__dirname, '../../logs');
-        if (!fs.existsSync(logPath)) {
-            fs.mkdirSync(logPath, { recursive: true });
+    // Initialize logger
+    const logger = new LogManager();
+    
+    // Set up log directory
+    const logPath = options.logs || path.join(process.cwd(), 'logs');
+    if (!fs.existsSync(logPath)) {
+        fs.mkdirSync(logPath, { recursive: true });
+    }
+    logger.setLogPath(logPath);
+
+    // Initialize bot manager
+    const bot = new BotManager(logger);
+
+    // Get bot token
+    let token = options.token;
+    if (!token) {
+        if (options.config) {
+            try {
+                const config = require(path.resolve(options.config));
+                token = config.token;
+            } catch (error) {
+                logger.error('Failed to load config file', { error: error.message });
+            }
         }
-        logger.setLogPath(logPath);
+        if (!token) {
+            token = process.env.DISCORD_BOT_TOKEN;
+        }
+    }
 
-        // Start the bot
-        const token = await getToken();
-        await botManager.start(token);
+    if (!token) {
+        logger.error('No bot token provided. Please provide a token via --token, config file, or DISCORD_BOT_TOKEN environment variable.');
+        process.exit(1);
+    }
 
-        // Handle shutdown
-        process.on('SIGINT', async () => {
-            console.log('\nGracefully shutting down...');
-            await botManager.stop();
-            process.exit(0);
+    // Handle process signals
+    process.on('SIGINT', async () => {
+        logger.info('Received SIGINT signal, shutting down...');
+        await bot.stop();
+        process.exit(0);
+    });
+
+    process.on('SIGTERM', async () => {
+        logger.info('Received SIGTERM signal, shutting down...');
+        await bot.stop();
+        process.exit(0);
+    });
+
+    // Handle uncaught errors
+    process.on('uncaughtException', (error) => {
+        logger.error('Uncaught Exception', { error: error.message, stack: error.stack });
+        process.exit(1);
+    });
+
+    process.on('unhandledRejection', (error) => {
+        logger.error('Unhandled Rejection', { error: error.message, stack: error.stack });
+    });
+
+    // Start the bot
+    try {
+        await bot.start(token);
+
+        // Set up status logging
+        setInterval(() => {
+            const status = bot.getStatus();
+            logger.info('Bot Status', {
+                online: status.online,
+                uptime: status.uptime,
+                servers: status.serverCount,
+                users: status.userCount,
+                commands: status.commandCount
+            });
+        }, 300000); // Log status every 5 minutes
+
+        // Log initial status
+        const initialStatus = bot.getStatus();
+        logger.info('Bot Started Successfully', {
+            online: initialStatus.online,
+            servers: initialStatus.serverCount,
+            users: initialStatus.userCount,
+            commands: initialStatus.commandCount
         });
 
-        // Export IPC interface for UI
-        if (require.main !== module) {
-            return {
-                botManager,
-                logger
-            };
-        }
     } catch (error) {
-        console.error('Failed to start bot:', error);
+        logger.error('Failed to start bot', { error: error.message, stack: error.stack });
         process.exit(1);
     }
 }
 
-// Only run if called directly (not imported)
-if (require.main === module) {
-    main();
-}
-
-module.exports = main;
+main().catch(error => {
+    console.error('Fatal error:', error);
+    process.exit(1);
+});
