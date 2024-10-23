@@ -1,0 +1,11 @@
+/* Import base styles and variables */
+@import './base.css';
+
+/* Import component styles */
+@import './sidebar.css';
+@import './dashboard.css';
+@import './settings.css';
+@import './servers.css';
+@import './console.css';
+
+/* Any additional global styles or overrides can go here */

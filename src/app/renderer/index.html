@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Discord Bot Control Panel</title>
+    <link rel="stylesheet" href="../styles/main.css">
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="bot-status">
+                <div class="status-indicator offline" id="status-indicator"></div>
+                <h3>Bot Status</h3>
+                <p id="uptime">Offline</p>
+            </div>
+            <nav>
+                <ul>
+                    <li class="active"><a href="#dashboard">Dashboard</a></li>
+                    <li><a href="#servers">Servers</a></li>
+                    <li><a href="#commands">Commands</a></li>
+                    <li><a href="#settings">Settings</a></li>
+                </ul>
+            </nav>
+        </div>
+        
+        <main class="content">
+            <div id="dashboard" class="page active">
+                <h1>Dashboard</h1>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Total Servers</h3>
+                        <p id="server-count">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active Users</h3>
+                        <p id="user-count">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Commands Used</h3>
+                        <p id="command-count">-</p>
+                    </div>
+                </div>
+                <div class="quick-actions">
+                    <h2>Quick Actions</h2>
+                    <div class="button-grid">
+                        <button id="restart-bot">Restart Bot</button>
+                        <button id="update-status">Update Status</button>
+                        <button id="reload-commands">Reload Commands</button>
+                    </div>
+                </div>
+                <!-- Console will be dynamically inserted here -->
+            </div>
+            
+            <div id="servers" class="page">
+                <h1>Servers</h1>
+                <div id="server-list" class="server-list">
+                    <!-- Servers will be populated here -->
+                    <div class="server-list-empty">
+                        <h3>No Servers Found</h3>
+                        <p>The bot is not currently in any servers.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="commands" class="page">
+                <h1>Commands</h1>
+                <div id="commands-list" class="commands-list">
+                    <!-- Commands will be populated here -->
+                    <div class="server-list-empty">
+                        <h3>No Commands Available</h3>
+                        <p>No commands have been registered yet.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="settings" class="page">
+                <h1>Settings</h1>
+                <div class="settings-form">
+                    <div class="setting-group">
+                        <label for="bot-token">Bot Token</label>
+                        <input type="password" id="bot-token" placeholder="Enter bot token">
+                    </div>
+                    <div class="setting-group">
+                        <label for="command-prefix">Command Prefix</label>
+                        <input type="text" id="command-prefix" placeholder="!">
+                    </div>
+                    <div class="setting-group">
+                        <label>
+                            <input type="checkbox" id="auto-restart">
+                            Auto Restart
+                        </label>
+                    </div>
+                    <button id="save-settings">Save Settings</button>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script type="module" src="../renderer/app.js"></script>
+</body>
+</html>

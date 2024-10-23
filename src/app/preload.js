@@ -1,0 +1,51 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+// Listen for events from main process
+const listeners = new Set();
+
+const addListener = (channel, callback) => {
+    const wrappedCallback = (event, ...args) => callback(...args);
+    ipcRenderer.on(channel, wrappedCallback);
+    listeners.add({ channel, callback: wrappedCallback });
+    
+    // Return cleanup function
+    return () => {
+        ipcRenderer.removeListener(channel, wrappedCallback);
+        listeners.delete({ channel, callback: wrappedCallback });
+    };
+};
+
+// Clean up listeners when window unloads
+window.addEventListener('unload', () => {
+    listeners.forEach(({ channel, callback }) => {
+        ipcRenderer.removeListener(channel, callback);
+    });
+    listeners.clear();
+});
+
+// Expose protected methods that allow the renderer process to use
+contextBridge.exposeInMainWorld('electronAPI', {
+    // Bot management
+    getServers: () => ipcRenderer.invoke('get-servers'),
+    getServerDetails: (serverId) => ipcRenderer.invoke('get-server-details', serverId),
+    getBotStatus: () => ipcRenderer.invoke('get-bot-status'),
+    startBot: () => ipcRenderer.invoke('start-bot'),
+    stopBot: () => ipcRenderer.invoke('stop-bot'),
+    restartBot: () => ipcRenderer.invoke('restart-bot'),
+    
+    // Settings management
+    getSetting: (key) => ipcRenderer.invoke('get-setting', key),
+    setSetting: (key, value) => ipcRenderer.invoke('set-setting', key, value),
+    
+    // Log management
+    getLogs: (options) => ipcRenderer.invoke('get-logs', options),
+    getLogFiles: () => ipcRenderer.invoke('get-log-files'),
+    exportLogs: (filename) => ipcRenderer.invoke('export-logs', filename),
+    saveLogs: () => ipcRenderer.invoke('save-logs'),
+    
+    // Event listeners
+    onBotStatusUpdate: (callback) => addListener('bot-status-update', callback),
+    onServersUpdate: (callback) => addListener('servers-update', callback),
+    onError: (callback) => addListener('error', callback),
+    onLog: (callback) => addListener('log', callback),
+});

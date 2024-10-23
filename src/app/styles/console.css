@@ -1,0 +1,164 @@
+#console-container {
+    margin-top: 30px;
+    background-color: var(--secondary-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.console-header {
+    padding: 15px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.console-header h2 {
+    margin: 0 0 10px 0;
+    color: var(--primary-color);
+}
+
+.console-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.console-controls input[type="text"] {
+    flex: 1;
+    min-width: 200px;
+    padding: 8px;
+    border: none;
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.2);
+    color: var(--text-color);
+}
+
+.console-controls select {
+    padding: 8px;
+    border: none;
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.2);
+    color: var(--text-color);
+}
+
+.console-controls label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.console-output {
+    height: 400px;
+    overflow-y: auto;
+    padding: 15px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.log-entry {
+    margin-bottom: 8px;
+    padding: 8px;
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.log-entry:hover {
+    background-color: rgba(0, 0, 0, 0.2);
+}
+
+.log-timestamp {
+    color: #888;
+    margin-right: 8px;
+}
+
+.log-level {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-right: 8px;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 12px;
+}
+
+.log-info .log-level {
+    background-color: var(--primary-color);
+}
+
+.log-warn .log-level {
+    background-color: var(--warning-color);
+    color: var(--background-color);
+}
+
+.log-error .log-level {
+    background-color: var(--error-color);
+}
+
+.log-debug .log-level {
+    background-color: #666;
+}
+
+.log-message {
+    color: var(--text-color);
+}
+
+.log-meta {
+    margin-top: 5px;
+    padding: 8px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    font-size: 12px;
+    color: #888;
+    white-space: pre-wrap;
+}
+
+/* Scrollbar Styling */
+.console-output::-webkit-scrollbar {
+    width: 8px;
+}
+
+.console-output::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.console-output::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+}
+
+.console-output::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Button Styles */
+.console-controls button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    background-color: var(--primary-color);
+    color: var(--text-color);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.console-controls button:hover {
+    background-color: #5b6eae;
+    transform: translateY(-2px);
+}
+
+.console-controls button:active {
+    transform: translateY(0);
+}
+
+#export-logs {
+    background-color: var(--success-color);
+}
+
+#save-logs {
+    background-color: var(--primary-color);
+}
+
+#clear-logs {
+    background-color: var(--error-color);
+}
