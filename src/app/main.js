@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 const BotManager = require('../bot/core/BotManager');
@@ -57,21 +57,18 @@ async function initializeBot() {
 
 // Set up event forwarding
 function setupEventForwarding() {
-    // Forward bot status updates
     discordBot.on('statusUpdate', (status) => {
         if (mainWindow?.webContents) {
             mainWindow.webContents.send('bot-status-update', status);
         }
     });
 
-    // Forward server updates
     discordBot.on('serversUpdate', (servers) => {
         if (mainWindow?.webContents) {
             mainWindow.webContents.send('servers-update', servers);
         }
     });
 
-    // Forward log events
     logger.on('log', (log) => {
         if (mainWindow?.webContents) {
             mainWindow.webContents.send('log', log);
@@ -188,7 +185,7 @@ ipcMain.handle('stop-bot', async () => {
 });
 
 // Log management
-ipcMain.handle('get-logs', async (event, options) => {
+ipcMain.handle('get-logs', async (event, options = {}) => {
     return logger.getLogs(options);
 });
 
@@ -196,16 +193,49 @@ ipcMain.handle('get-log-files', async () => {
     return logger.getLogFiles();
 });
 
-ipcMain.handle('export-logs', async (event, filename) => {
-    const exportPath = path.join(app.getPath('downloads'), filename);
-    return logger.saveLogsToFile(exportPath);
+ipcMain.handle('get-log-path', async () => {
+    return logPath;
+});
+
+ipcMain.handle('open-log-directory', async () => {
+    try {
+        await shell.openPath(logPath);
+        return true;
+    } catch (error) {
+        logger.error('Failed to open log directory', { error: error.message });
+        throw new Error('Failed to open log directory');
+    }
+});
+
+ipcMain.handle('export-logs', async (event, filename, options = {}) => {
+    try {
+        logger.info('Exporting logs', { filename, ...options });
+        const exportPath = path.join(app.getPath('downloads'), filename);
+        await logger.saveLogsToFile(exportPath, options);
+        
+        // Log success and open the downloads folder
+        logger.info('Logs exported successfully', { path: exportPath });
+        await shell.openPath(path.dirname(exportPath));
+        
+        return true;
+    } catch (error) {
+        logger.error('Failed to export logs', { error: error.message });
+        throw new Error('Failed to export logs');
+    }
 });
 
 ipcMain.handle('save-logs', async () => {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `bot-logs-${timestamp}.log`;
-    const savePath = path.join(logPath, filename);
-    return logger.saveLogsToFile(savePath);
+    try {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `bot-logs-${timestamp}.log`;
+        const savePath = path.join(logPath, filename);
+        await logger.saveLogsToFile(savePath);
+        logger.info('Logs saved successfully', { path: savePath });
+        return true;
+    } catch (error) {
+        logger.error('Failed to save logs', { error: error.message });
+        throw new Error('Failed to save logs');
+    }
 });
 
 // Error handling

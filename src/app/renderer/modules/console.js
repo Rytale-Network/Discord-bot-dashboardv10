@@ -6,6 +6,7 @@ class ConsoleManager {
     this.levelFilter = null;
     this.autoScroll = true;
     this.logs = [];
+    this.logPath = null;
 
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", () => this.initialize());
@@ -18,6 +19,25 @@ class ConsoleManager {
     this.createConsoleUI();
     this.setupEventListeners();
     this.loadInitialLogs();
+    this.updateLogPath();
+  }
+
+  async updateLogPath() {
+    try {
+      const logPath = await window.electronAPI.getLogPath();
+      this.logPath = logPath;
+      const pathInfo = document.createElement("div");
+      pathInfo.className = "log-path-info";
+      pathInfo.innerHTML = `
+                <span class="path">Logs Directory: ${logPath}</span>
+                <button onclick="window.electronAPI.openLogDirectory()">Open Directory</button>
+            `;
+      this.consoleElement
+        .querySelector(".console-header")
+        .appendChild(pathInfo);
+    } catch (error) {
+      console.error("Failed to get log path:", error);
+    }
   }
 
   createConsoleUI() {
@@ -76,18 +96,142 @@ class ConsoleManager {
 
     document
       .getElementById("export-logs")
-      ?.addEventListener("click", () => this.exportLogs());
+      ?.addEventListener("click", () => this.showExportDialog());
     document
       .getElementById("save-logs")
-      ?.addEventListener("click", () => this.saveLogs());
+      ?.addEventListener("click", () => this.showSaveDialog());
     document
       .getElementById("clear-logs")
       ?.addEventListener("click", () => this.clearLogs());
 
-    // Listen for new logs from the main process
-    if (window.electronAPI?.onLog) {
-      window.electronAPI.onLog((log) => this.addLog(log));
-    }
+    window.electronAPI.onLog((log) => this.addLog(log));
+  }
+
+  showExportDialog() {
+    const dialog = document.createElement("div");
+    dialog.className = "export-dialog";
+    const dialogContent = `
+            <div class="export-dialog-content">
+                <h2>Export Logs</h2>
+                <div class="export-options">
+                    <div class="export-option">
+                        <label>Log Level</label>
+                        <select id="export-level">
+                            <option value="all">All Levels</option>
+                            <option value="info">Info Only</option>
+                            <option value="warn">Warning & Above</option>
+                            <option value="error">Errors Only</option>
+                        </select>
+                    </div>
+                    <div class="export-option">
+                        <label>Time Range</label>
+                        <select id="export-range">
+                            <option value="all">All Time</option>
+                            <option value="hour">Last Hour</option>
+                            <option value="day">Last 24 Hours</option>
+                            <option value="week">Last Week</option>
+                        </select>
+                    </div>
+                    <div class="export-option">
+                        <label>Export Location</label>
+                        <div class="log-path-info">
+                            <span class="path">Downloads folder</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="export-actions">
+                    <button class="cancel">Cancel</button>
+                    <button class="export">Export</button>
+                </div>
+            </div>
+        `;
+    dialog.innerHTML = dialogContent;
+
+    // Add event listeners
+    dialog
+      .querySelector(".cancel")
+      .addEventListener("click", () => dialog.remove());
+    dialog.querySelector(".export").addEventListener("click", async () => {
+      const level = dialog.querySelector("#export-level").value;
+      const range = dialog.querySelector("#export-range").value;
+
+      try {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const filename = `bot-logs-${timestamp}.txt`;
+        await window.electronAPI.exportLogs(filename, { level, range });
+        dialog.remove();
+        alert("Logs exported successfully! Opening downloads folder...");
+      } catch (error) {
+        console.error("Failed to export logs:", error);
+        alert("Failed to export logs. Please try again.");
+      }
+    });
+
+    document.body.appendChild(dialog);
+  }
+
+  showSaveDialog() {
+    const dialog = document.createElement("div");
+    dialog.className = "export-dialog";
+    const dialogContent = `
+            <div class="export-dialog-content">
+                <h2>Save Logs</h2>
+                <div class="export-options">
+                    <div class="export-option">
+                        <label>Log Level</label>
+                        <select id="save-level">
+                            <option value="all">All Levels</option>
+                            <option value="info">Info Only</option>
+                            <option value="warn">Warning & Above</option>
+                            <option value="error">Errors Only</option>
+                        </select>
+                    </div>
+                    <div class="export-option">
+                        <label>Time Range</label>
+                        <select id="save-range">
+                            <option value="all">All Time</option>
+                            <option value="hour">Last Hour</option>
+                            <option value="day">Last 24 Hours</option>
+                            <option value="week">Last Week</option>
+                        </select>
+                    </div>
+                    <div class="export-option">
+                        <label>Save Location</label>
+                        <div class="log-path-info">
+                            <span class="path">${
+                              this.logPath || "Default logs directory"
+                            }</span>
+                            <button onclick="window.electronAPI.openLogDirectory()">Open</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="export-actions">
+                    <button class="cancel">Cancel</button>
+                    <button class="save">Save</button>
+                </div>
+            </div>
+        `;
+    dialog.innerHTML = dialogContent;
+
+    // Add event listeners
+    dialog
+      .querySelector(".cancel")
+      .addEventListener("click", () => dialog.remove());
+    dialog.querySelector(".save").addEventListener("click", async () => {
+      const level = dialog.querySelector("#save-level").value;
+      const range = dialog.querySelector("#save-range").value;
+
+      try {
+        await window.electronAPI.saveLogs({ level, range });
+        dialog.remove();
+        alert("Logs saved successfully!");
+      } catch (error) {
+        console.error("Failed to save logs:", error);
+        alert("Failed to save logs. Please try again.");
+      }
+    });
+
+    document.body.appendChild(dialog);
   }
 
   formatTimestamp(timestamp) {
@@ -103,7 +247,7 @@ class ConsoleManager {
       ? `<pre class="log-meta">${this.escapeHtml(meta)}</pre>`
       : "";
 
-    logElement.innerHTML = `
+    const content = `
             <span class="log-timestamp">[${this.formatTimestamp(
               log.timestamp
             )}]</span>
@@ -114,9 +258,9 @@ class ConsoleManager {
             ${metaHtml}
         `;
 
+    logElement.innerHTML = content;
     return logElement;
   }
-
   escapeHtml(unsafe) {
     if (typeof unsafe !== "string") return "";
     return unsafe
@@ -125,7 +269,7 @@ class ConsoleManager {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
-  }
+  } 
 
   addLog(log) {
     if (!log) return;
@@ -196,31 +340,15 @@ class ConsoleManager {
 
   async loadInitialLogs() {
     try {
-      if (window.electronAPI?.getLogs) {
-        const logs = await window.electronAPI.getLogs();
-        logs.forEach((log) => this.addLog(log));
-      }
+      const logs = await window.electronAPI.getLogs();
+      logs.forEach((log) => this.addLog(log));
     } catch (error) {
       console.error("Failed to load logs:", error);
     }
   }
 
-  async exportLogs() {
-    try {
-      if (!window.electronAPI?.exportLogs) return;
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const filename = `bot-logs-${timestamp}.txt`;
-      await window.electronAPI.exportLogs(filename);
-      alert("Logs exported successfully!");
-    } catch (error) {
-      console.error("Failed to export logs:", error);
-      alert("Failed to export logs. Please try again.");
-    }
-  }
-
   async saveLogs() {
     try {
-      if (!window.electronAPI?.saveLogs) return;
       await window.electronAPI.saveLogs();
       alert("Logs saved successfully!");
     } catch (error) {

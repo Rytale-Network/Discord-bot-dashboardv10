@@ -40,12 +40,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Log management
     getLogs: (options) => ipcRenderer.invoke('get-logs', options),
     getLogFiles: () => ipcRenderer.invoke('get-log-files'),
-    exportLogs: (filename) => ipcRenderer.invoke('export-logs', filename),
+    exportLogs: (filename, options) => ipcRenderer.invoke('export-logs', filename, options),
     saveLogs: () => ipcRenderer.invoke('save-logs'),
+    getLogPath: () => ipcRenderer.invoke('get-log-path'),
+    openLogDirectory: () => ipcRenderer.invoke('open-log-directory'),
     
     // Event listeners
     onBotStatusUpdate: (callback) => addListener('bot-status-update', callback),
     onServersUpdate: (callback) => addListener('servers-update', callback),
     onError: (callback) => addListener('error', callback),
-    onLog: (callback) => addListener('log', callback),
+    onLog: (callback) => addListener('log', callback)
 });

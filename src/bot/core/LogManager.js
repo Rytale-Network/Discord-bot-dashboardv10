@@ -10,7 +10,7 @@ class LogManager extends EventEmitter {
         this.currentLogFile = null;
         this.currentStream = null;
         this.logs = [];
-        this.maxLogsInMemory = 1000; // Keep last 1000 logs in memory
+        this.maxLogsInMemory = 1000;
     }
 
     setLogPath(logPath) {
@@ -99,38 +99,39 @@ class LogManager extends EventEmitter {
         this.log('debug', message, meta);
     }
 
-    async getLogs(options = {}) {
-        const {
-            limit = 100,
-            level,
-            startDate,
-            endDate,
-            search
-        } = options;
-
+    filterLogs(options = {}) {
+        const { level, range } = options;
         let filteredLogs = [...this.logs];
 
-        if (level) {
-            filteredLogs = filteredLogs.filter(log => log.level === level);
+        if (level && level !== 'all') {
+            const levels = {
+                'info': ['info'],
+                'warn': ['warn', 'error'],
+                'error': ['error']
+            };
+            const allowedLevels = levels[level] || [];
+            filteredLogs = filteredLogs.filter(log => allowedLevels.includes(log.level));
         }
 
-        if (startDate) {
-            filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) >= new Date(startDate));
+        if (range && range !== 'all') {
+            const now = new Date();
+            const ranges = {
+                'hour': 60 * 60 * 1000,
+                'day': 24 * 60 * 60 * 1000,
+                'week': 7 * 24 * 60 * 60 * 1000
+            };
+            const timeRange = ranges[range] || 0;
+            filteredLogs = filteredLogs.filter(log => {
+                const logTime = new Date(log.timestamp);
+                return (now - logTime) <= timeRange;
+            });
         }
 
-        if (endDate) {
-            filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) <= new Date(endDate));
-        }
+        return filteredLogs;
+    }
 
-        if (search) {
-            const searchLower = search.toLowerCase();
-            filteredLogs = filteredLogs.filter(log =>
-                log.message.toLowerCase().includes(searchLower) ||
-                JSON.stringify(log.meta || {}).toLowerCase().includes(searchLower)
-            );
-        }
-
-        return filteredLogs.slice(-limit);
+    async getLogs(options = {}) {
+        return this.filterLogs(options);
     }
 
     async getLogFiles() {
@@ -150,22 +151,20 @@ class LogManager extends EventEmitter {
             .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     }
 
-    async exportLogs(options = {}) {
-        const logs = await this.getLogs(options);
-        return logs
-            .map(log => {
-                let entry = `[${log.timestamp}] ${log.level.toUpperCase()}: ${log.message}`;
-                if (log.meta && Object.keys(log.meta).length > 0) {
-                    entry += `\n${JSON.stringify(log.meta, null, 2)}`;
-                }
-                return entry;
-            })
-            .join('\n');
+    formatLogsForExport(logs) {
+        return logs.map(log => {
+            let entry = `[${log.timestamp}] ${log.level.toUpperCase()}: ${log.message}`;
+            if (log.meta && Object.keys(log.meta).length > 0) {
+                entry += `\n${JSON.stringify(log.meta, null, 2)}`;
+            }
+            return entry;
+        }).join('\n');
     }
 
     async saveLogsToFile(filepath, options = {}) {
-        const logsContent = await this.exportLogs(options);
-        await fs.promises.writeFile(filepath, logsContent, 'utf8');
+        const logs = this.filterLogs(options);
+        const content = this.formatLogsForExport(logs);
+        await fs.promises.writeFile(filepath, content, 'utf8');
     }
 }
 
